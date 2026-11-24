@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "breadwitness"
+version = "0.1.0"
+description = "An open-source, machine-learning-powered visual investigation and image retrieval engine. Every image leaves a trail."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+keywords = ["image-search", "image-retrieval", "perceptual-hash", "computer-vision"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Graphics",
+]
+dependencies = [
+    "Pillow>=10.0",
+    "ImageHash>=4.3.1",
+    "numpy>=1.24",
+    "typer>=0.9",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4"]
+
+[project.urls]
+Homepage = "https://github.com/nomadx3dg/breadwitness"
+Repository = "https://github.com/nomadx3dg/breadwitness.git"
+
+[project.scripts]
+breadwitness = "breadwitness.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["breadwitness*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

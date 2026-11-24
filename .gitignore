@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# Tooling
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Breadwitness local data
+.breadwitness/
+*.db
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
