@@ -2,138 +2,218 @@
 
 **Every image leaves a trail.**
 
-Breadwitness is an open-source, machine-learning-powered visual investigation
-and image retrieval engine. It is not a chatbot: it is a search and
-recognition tool that finds the most accurate matching images using computer
-vision.
+Breadwitness (Bread + Eyewitness) is an open-source, local-first visual
+investigation and image retrieval engine. It is not a chatbot: it is a search
+tool that finds the most accurate matching images in a collection you index.
 
-> **Status: 0.1 prototype (alpha).** Version 0.1 is a local image search
-> engine built on hashing. It does **not** yet use machine learning, OCR,
-> object detection or any online service. See [Roadmap](#roadmap).
+> **Status: 0.2 (alpha).** Breadwitness searches **local folders only**. It
+> does not crawl the web, query reverse-image-search services, read text in
+> images, or detect objects. See [Roadmap](#roadmap).
+
+## What 0.2 adds
+
+- **Image embeddings.** Each image can be turned into a vector, stored in the
+  index, and compared with a query image to find visually or semantically
+  similar pictures (not just near-copies).
+- **Hybrid search.** Exact (SHA-256), perceptual-hash and embedding signals are
+  combined. Every signal stays visible in the results.
+- **Incremental embedding index.** Unchanged files are skipped, changed files
+  are re-embedded, switching models only embeds what is missing.
+- **Two models.** OpenCLIP (semantic, optional install) and `color-hist`
+  (built in, no download, color layout only).
+- New commands `embed` and `models`; new options `--mode`, `--model`,
+  `--min-similarity`, `--embed`. All 0.1 commands and options still work.
 
 ## Features
 
-### Implemented in 0.1
+### Implemented
 
-- Recursive scanning of JPG, JPEG, PNG, WebP and BMP files
-- Image validation; corrupted files are reported and skipped
+- Recursive scanning of JPG, JPEG, PNG, WebP, BMP; corrupt files reported and skipped
 - EXIF orientation normalization
-- SHA-256 file hashes and 64-bit perceptual hashes (pHash, dHash, aHash)
-- Persistent SQLite index (survives restarts)
-- Incremental indexing and detection of changed, new and deleted files
+- SHA-256 file hashes; pHash, dHash, aHash perceptual hashes
+- Persistent SQLite index; incremental indexing; changed/deleted file detection
 - Exact-duplicate detection
-- Exact matching (identical bytes) and perceptual matching (Hamming distance)
-- Ranked results with a configurable limit and distance threshold
-- CLI: `index`, `search`, `stats`, `duplicates`
-- CPU only, no API keys, no network access, no GPU
+- Exact, perceptual, embedding and hybrid search with ranked results
+- Embedding generation (OpenCLIP or `color-hist`), CPU only, batched, resumable
+- Embeddings stored as float16 in the same SQLite file; per-model storage
+- Automatic, non-destructive migration of 0.1 indexes
+- CLI: `index`, `embed`, `search`, `stats`, `duplicates`, `models`
 
 ### Planned (not implemented)
 
-OpenCLIP embeddings, FAISS vector search, OCR and partial-text matching,
-object detection, building and landmark recognition, region-based matching,
-bounding-box pointers, a custom ranking model, external reverse image search
-providers, public web image discovery and a continuously growing index.
+FAISS / approximate nearest-neighbor search, OCR and partial-text matching,
+object detection, landmark recognition, region-based matching, a learned
+ranking model, external reverse image search providers, public web image
+discovery.
 
 ## Installation
 
-Requires Python 3.11 or newer.
+Requires Python 3.11+.
 
 ```bash
 git clone https://github.com/nomadx3dg/breadwitness.git
 cd breadwitness
 python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
-pip install -e ".[dev]"
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+pip install -e ".[dev]"            # core: hashes + color-hist, small install
 ```
+
+### Semantic embeddings (OpenCLIP), CPU only
+
+The default model needs PyTorch and OpenCLIP. No GPU is needed or used.
+To avoid a large CUDA build of PyTorch, install the CPU build first:
+
+```bash
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+pip install -e ".[embeddings]"
+```
+
+Without that extra, everything except OpenCLIP works, and you can use
+`--model color-hist`.
+
+### Model download and storage
+
+OpenCLIP weights are downloaded **once, on first use**, from the Hugging Face
+Hub, and cached (by default under `~/.cache/huggingface`). Set
+`BREADWITNESS_MODEL_CACHE` to choose another folder. After that, Breadwitness
+works offline. `color-hist` needs no download. Images never leave your machine.
 
 ## Usage
 
 ```bash
+# 1. index (hashes) - same as 0.1
 breadwitness index ./images
+
+# 2. embed (incremental; first run downloads the model)
+breadwitness embed
+#    or do both at once:
+breadwitness index ./images --embed
+
+# 3. search
 breadwitness search ./query.jpg
 breadwitness search ./query.jpg --limit 20
+breadwitness search ./query.jpg --mode embedding --min-similarity 0.75
+
 breadwitness stats
 ```
 
-The same commands work through Python:
+Also available as `python -m breadwitness ...`. Use `--model color-hist`
+(or `export BREADWITNESS_MODEL=color-hist`) to avoid installing OpenCLIP.
 
-```bash
-python -m breadwitness index ./images
-python -m breadwitness search ./query.jpg
-```
-
-Example output:
+Example hybrid result:
 
 ```
 Query: query.jpg (120x120, JPEG) - 5 indexed images scanned
-1 result(s):
+Mode: hybrid (model: openclip:ViT-B-32/laion2b_s34b_b79k)
+2 result(s):
 
   1. img2.png
      path:       /home/me/images/img2.png
      dimensions: 256x256
      method:     perceptual (hash similarity)
-     pHash dist: 0/64 (dHash 0, aHash 1)
-     similarity: 0.990
-
-Similarity is a heuristic score from hash distances in [0, 1]. It is not a probability.
+     pHash dist: 2/64 (dHash 1, aHash 3)
+     embedding:  cosine 0.973
+     similarity: 0.985 (basis: hash)
+  2. img9.png
+     ...
+     method:     semantic (embedding similarity)
+     pHash dist: 27/64 (dHash 25, aHash 24)
+     embedding:  cosine 0.842
+     similarity: 0.842 (basis: embedding)
 ```
 
-A Python API example is in `examples/quickstart.py`.
+(Illustrative output; actual numbers depend on your images and model.)
 
 ## CLI reference
 
-Global option: `--version`.
-
 | Command | Description |
 | --- | --- |
-| `index PATH` | Index a directory (recursive) or a single image |
-| `search QUERY` | Find indexed images matching a query image |
-| `stats` | Show index statistics |
+| `index PATH` | Index a directory (recursive) or file; `--embed` also embeds |
+| `embed` | Generate embeddings for indexed images (incremental) |
+| `search QUERY` | Find matching indexed images |
+| `stats` | Index statistics, including embedding coverage per model |
 | `duplicates` | List groups of byte-identical files |
-
-Options:
+| `models` | List documented embedding models |
 
 | Option | Applies to | Description |
 | --- | --- | --- |
-| `--db PATH` | all | Index database. Default: `$BREADWITNESS_DB`, else `./.breadwitness/index.db` |
-| `--force` | `index` | Re-process files even if unchanged |
-| `--prune/--no-prune` | `index` | Remove entries for deleted files (default: prune) |
-| `-v, --verbose` | `index` | Print the status of every file |
+| `--db PATH` | all | Index database (`$BREADWITNESS_DB`, else `./.breadwitness/index.db`) |
+| `--model SPEC` | `index --embed`, `embed`, `search` | Embedding model (`$BREADWITNESS_MODEL`, else the OpenCLIP default) |
+| `--force`, `--prune/--no-prune`, `-v` | `index` | As in 0.1 |
+| `--embed` | `index` | Embed after indexing |
+| `--rebuild` | `embed` | Re-embed every image for this model |
+| `--batch-size N` | `embed`, `index --embed` | Images per batch (default 16) |
+| `--purge-other-models` | `embed` | Delete embeddings made by other models |
 | `-n, --limit N` | `search` | Maximum results (default 10) |
-| `--max-distance N` | `search` | Maximum pHash Hamming distance, 0-64 (default 10) |
-| `--exclude-self` | `search` | Ignore the query file if it is itself indexed |
+| `--max-distance N` | `search` | Maximum pHash distance, 0-64 (default 10) |
+| `--mode` | `search` | `auto` (default), `hash`, `embedding`, `hybrid` |
+| `--min-similarity X` | `search` | Minimum cosine for semantic matches (-1 to 1) |
+| `--exclude-self` | `search` | Ignore the query file if indexed |
 
-Each result shows the filename, original path, dimensions, matching method
-(`exact` or `perceptual`), pHash distance and similarity score.
+`--mode auto` uses `hybrid` when embeddings exist for the model, otherwise
+`hash`, which is exactly the 0.1 behavior.
 
-### How to read results
+### How results are ranked and scored
 
-- **exact**: the file is byte-identical to the query (same SHA-256).
-- **perceptual**: the image looks similar. A pHash distance of 0 to about 10
-  (out of 64) usually means the same picture after resizing or recompression,
-  but it is not proof. Crops, heavy edits and unrelated images with similar
-  layouts can also land close.
-- **similarity** is a heuristic derived from hash distances. It is **not a
-  probability** and should not be read as a confidence.
+Results are classified as **exact** (identical bytes), **perceptual** (close
+pHash) or **semantic** (close embedding), and ordered in that order. There is
+no blended score: hash similarity and embedding cosine are different
+quantities, so Breadwitness shows each signal and orders by evidence type
+instead. The `similarity` value is labeled with its basis, values with
+different bases are not comparable, and **no value is a probability** of two
+images being the same. The default thresholds (`--max-distance 10`,
+`--min-similarity` 0.80 for OpenCLIP, 0.85 for `color-hist`) are heuristics;
+tune them on your own images.
+
+## Maintaining the index
+
+- **Skipping unchanged files:** `index` compares size and modification time;
+  `embed` only processes images with no current vector for the model.
+- **Changed files:** a vector is tied to the file's SHA-256. A changed file's
+  old vector is ignored immediately and replaced on the next `embed`.
+- **Missing files:** `index` prunes them (and their embeddings).
+- **Corrupt or unsupported files:** reported and skipped, never fatal.
+- **Changing model:** `embed --model NEW` embeds only what NEW lacks. Old
+  vectors are kept until you pass `--purge-other-models`.
+- **Upgrading from 0.1:** open your existing index with 0.2. The schema is
+  upgraded in place; no image data is removed. Back up `index.db` first if the
+  index is valuable (always sensible before any upgrade).
+- Interrupted `embed` runs resume: work is committed per batch.
+
+## Expected resource usage
+
+| | OpenCLIP ViT-B-32 (laion2b) | color-hist |
+| --- | --- | --- |
+| Install | PyTorch + OpenCLIP (hundreds of MB; more with a CUDA build) | none extra |
+| Model download | roughly 600 MB, once | none |
+| RAM while embedding | about 1-2 GB (estimate) | tens of MB |
+| Speed on CPU | a few to a few tens of images/s, hardware dependent (estimate) | hundreds/s |
+| Vector size | 512 dims = 1 KB per image | 256 dims = 0.5 KB per image |
+| Search RAM | about 1 KB x images (100k images = ~100 MB) | about 0.5 KB x images |
+
+Storage and search-memory figures follow from the float16 storage format. The
+speed, download and embedding-RAM figures are estimates; they have not been
+benchmarked on your hardware. Search is an exact linear scan: fine for
+hundreds of thousands of images, slower beyond that (FAISS is planned).
+
+## Known limitations
+
+- Local folders only. No web search, crawling, or reverse-image-search providers.
+- Semantic matching quality depends on the model. OpenCLIP finds similar
+  scenes and objects; it does not identify a specific place or person, and
+  similar images are not evidence that two images share an origin.
+- `color-hist` compares color layout only. It is a lightweight fallback, not a
+  semantic model.
+- Embeddings from different models are not comparable and are kept separate.
+- The OpenCLIP backend was written against the OpenCLIP API but could not be
+  exercised with real model weights in the development sandbox (no access to
+  the model host); its logic is unit-tested only through the shared backend
+  interface. Please report any problems on first real use.
+- Perceptual hashes do not survive crops, rotations or mirroring.
 
 ## Architecture
 
-```
-breadwitness/
-  config.py         constants and database path resolution
-  models.py         dataclasses shared by all modules
-  preprocessing.py  validation, EXIF orientation, RGB conversion
-  hashing.py        SHA-256, perceptual hashes, Hamming distance
-  ingestion.py      file discovery and ImageRecord creation
-  database.py       SQLite persistence
-  indexing.py       incremental indexing
-  search.py         exact and perceptual retrieval
-  ranking.py        scoring and ordering
-  cli.py            Typer commands
-```
-
-Details and the plan for adding recognition modules independently are in
-[`docs/architecture.md`](docs/architecture.md).
+See [`docs/architecture.md`](docs/architecture.md).
 
 ## Development
 
@@ -142,26 +222,17 @@ pip install -e ".[dev]"
 pytest
 ```
 
-Tests generate their own synthetic images; no downloads are needed.
-
-## Known limitations
-
-- Perceptual hashes find resized, recompressed and lightly edited copies. They
-  do not understand content, so crops, rotations, mirrored images and
-  different photos of the same scene are mostly not found.
-- Search is a linear scan over all indexed images.
-- Only local files are searched.
+The tests need no network and no model download: they use the built-in
+`color-hist` model and a tiny deterministic test model.
 
 ## Roadmap
 
-1. **0.1 (this release):** hash-based local index and search.
-2. **0.2:** OpenCLIP embeddings and FAISS for semantic similarity.
-3. **0.3:** OCR and partial-text matching.
-4. **0.4:** object detection and bounding-box pointers.
-5. **0.5:** region-based matching (local features).
-6. **Later:** building and landmark recognition, a custom ranking model,
-   external reverse image search providers, public web image discovery and a
-   continuously growing index.
+1. **0.1:** hash-based local index and search (done)
+2. **0.2:** embeddings and hybrid search (this release)
+3. **0.3:** approximate nearest-neighbor index (FAISS) for large collections
+4. **Later:** OCR and partial-text matching, object detection, region-based
+   matching, landmark recognition, a learned ranking model, external reverse
+   image search providers, public web image discovery
 
 Roadmap items are plans, not commitments.
 

@@ -11,6 +11,15 @@ class MatchMethod(str, Enum):
 
     EXACT = "exact"  # byte-identical file (same SHA-256)
     PERCEPTUAL = "perceptual"  # visually similar (perceptual hash distance)
+    SEMANTIC = "semantic"  # similar by embedding (cosine similarity)
+
+
+class SearchMode(str, Enum):
+    """Which signals a search uses to decide what counts as a match."""
+
+    HASH = "hash"  # exact + perceptual hashes (the 0.1 behavior)
+    EMBEDDING = "embedding"  # exact + embedding similarity
+    HYBRID = "hybrid"  # all three
 
 
 @dataclass(frozen=True)
@@ -51,6 +60,8 @@ class SearchResult:
     dhash_distance: int
     ahash_distance: int
     score: float  # heuristic similarity in [0, 1]; NOT a probability
+    cosine: float | None = None  # embedding cosine similarity, if computed
+    score_basis: str = "hash"  # which signal `score` is derived from
 
 
 @dataclass
@@ -60,6 +71,9 @@ class SearchResponse:
     query: ImageRecord
     results: list[SearchResult]
     candidates_scanned: int
+    mode: SearchMode = SearchMode.HASH
+    model_id: str | None = None
+    unembedded: int = 0  # candidates without a current embedding for model_id
 
 
 @dataclass
@@ -71,4 +85,16 @@ class IndexReport:
     updated: int = 0
     unchanged: int = 0
     removed: int = 0
+    skipped: list[tuple[str, str]] = field(default_factory=list)
+
+
+@dataclass
+class EmbedReport:
+    """Summary of one embedding run."""
+
+    model_id: str
+    total: int = 0  # images in the index
+    embedded: int = 0  # embeddings written in this run
+    up_to_date: int = 0  # images that already had a current embedding
+    purged: int = 0  # rows removed for other models
     skipped: list[tuple[str, str]] = field(default_factory=list)

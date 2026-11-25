@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "breadwitness"
-version = "0.1.0"
+version = "0.2.0"
 description = "An open-source, machine-learning-powered visual investigation and image retrieval engine. Every image leaves a trail."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
-keywords = ["image-search", "image-retrieval", "perceptual-hash", "computer-vision"]
+keywords = ["image-search", "image-retrieval", "perceptual-hash", "embeddings", "openclip", "computer-vision"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "License :: OSI Approved :: Apache Software License",
@@ -26,6 +26,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Semantic embeddings (OpenCLIP + PyTorch). Optional: the core install stays small.
+embeddings = ["open_clip_torch>=2.24"]
 dev = ["pytest>=7.4"]
 
 [project.urls]

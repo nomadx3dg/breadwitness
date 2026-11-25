@@ -6,6 +6,9 @@ import numpy as np
 import pytest
 from PIL import Image
 
+from breadwitness.embedding import register_backend
+from breadwitness.similarity import l2_normalize
+
 
 def make_image(seed: int, size: tuple[int, int] = (256, 256)) -> Image.Image:
     """A smooth, deterministic, structured image: blurred random color blocks."""
@@ -30,3 +33,30 @@ def image_dir(tmp_path: Path) -> Path:
 @pytest.fixture
 def db_path(tmp_path: Path) -> Path:
     return tmp_path / "index.db"
+
+
+class MeanColorBackend:
+    """Tiny deterministic test model: centered mean RGB (3 dims)."""
+
+    model_id = "test-mean"
+    dim = 3
+    default_min_similarity = 0.9
+
+    def __init__(self):
+        self.batches: list[int] = []
+
+    def embed_images(self, images):
+        self.batches.append(len(images))
+        rows = [
+            np.asarray(im.convert("RGB"), dtype=np.float32).reshape(-1, 3).mean(axis=0) - 127.5
+            for im in images
+        ]
+        return l2_normalize(np.stack(rows))
+
+
+register_backend("test-mean", lambda arg: MeanColorBackend())
+
+
+@pytest.fixture
+def mean_backend() -> MeanColorBackend:
+    return MeanColorBackend()

@@ -1,4 +1,3 @@
-import numpy as np
 
 from breadwitness.hashing import (
     compute_perceptual_hashes,

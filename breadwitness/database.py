@@ -32,6 +32,16 @@ CREATE TABLE IF NOT EXISTS images (
     indexed_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_images_sha256 ON images (sha256);
+CREATE TABLE IF NOT EXISTS embeddings (
+    image_id   INTEGER NOT NULL REFERENCES images(id) ON DELETE CASCADE,
+    model_id   TEXT NOT NULL,
+    dim        INTEGER NOT NULL,
+    sha256     TEXT NOT NULL,
+    vector     BLOB NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (image_id, model_id)
+);
+CREATE INDEX IF NOT EXISTS idx_embeddings_model ON embeddings (model_id);
 """
 
 _COLUMNS = (
@@ -76,6 +86,7 @@ class Database:
         try:
             self._conn = sqlite3.connect(str(path))
             self._conn.row_factory = sqlite3.Row
+            self._conn.execute("PRAGMA foreign_keys = ON")
             self._init_schema()
         except sqlite3.DatabaseError as exc:
             raise DatabaseError(f"Cannot open index database {path}: {exc}") from exc
@@ -96,6 +107,19 @@ class Database:
                 f"Index schema v{row['value']} is newer than this Breadwitness "
                 f"(supports v{SCHEMA_VERSION}). Please upgrade."
             )
+        elif int(row["value"]) < SCHEMA_VERSION:
+            # Additive migration: the embeddings table was created above.
+            # Existing image rows are left untouched.
+            self._conn.execute(
+                "UPDATE meta SET value = ? WHERE key = 'schema_version'",
+                (str(SCHEMA_VERSION),),
+            )
+            self._conn.commit()
+
+    @property
+    def connection(self) -> sqlite3.Connection:
+        """The underlying connection (used by EmbeddingStore)."""
+        return self._conn
 
     # -- lifecycle ---------------------------------------------------------
     def commit(self) -> None:

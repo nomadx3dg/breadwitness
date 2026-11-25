@@ -26,10 +26,28 @@ def similarity_score(phash_d: int, dhash_d: int, ahash_d: int) -> float:
     return max(0.0, min(PERCEPTUAL_MAX_SCORE, 1.0 - weighted / HASH_BITS))
 
 
-def sort_key(result: SearchResult) -> tuple[int, int, float, str]:
-    """Exact matches first, then smaller pHash distance, then higher score."""
-    method_rank = 0 if result.method is MatchMethod.EXACT else 1
-    return (method_rank, result.phash_distance, -result.score, result.record.path)
+def embedding_score(cosine: float) -> float:
+    """Cosine similarity clipped to [0, 1] for display."""
+    return max(0.0, min(1.0, cosine))
+
+
+_TIER = {MatchMethod.EXACT: 0, MatchMethod.PERCEPTUAL: 1, MatchMethod.SEMANTIC: 2}
+
+
+def sort_key(result: SearchResult) -> tuple[int, int, float, float, str]:
+    """Order results by evidence tier, then by the signal that defines the tier.
+
+    1. exact (identical bytes)
+    2. perceptual (pHash distance, smaller first; embedding cosine breaks ties)
+    3. semantic (embedding cosine, larger first)
+
+    Scores computed from different signals are never compared with each other;
+    the tier decides first. Without embeddings this reduces to the 0.1 order.
+    """
+    tier = _TIER[result.method]
+    phash = result.phash_distance if tier < 2 else 0
+    cosine = result.cosine if result.cosine is not None else -2.0
+    return (tier, phash, -cosine, -result.score, result.record.path)
 
 
 def rank_results(results: list[SearchResult]) -> list[SearchResult]:
